@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paper Research Agent — 學術論文研究代理</title>
+  <meta name="description" content="AI-powered academic paper search, download and analysis agent using OLLAMA">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Background Effects -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- Hero Section -->
+  <header class="hero" id="hero">
+    <div class="hero-content">
+      <div class="logo-icon">📑</div>
+      <h1>Paper Research Agent</h1>
+      <p class="hero-subtitle">AI 驅動的學術論文搜尋、下載與深度分析代理</p>
+      <div class="tech-badges">
+        <span class="tech-badge">🤖 Ollama API </span>
+        <span class="tech-badge">🔍 Semantic Scholar</span>
+        <span class="tech-badge">📄 PDF Analysis</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Search Section -->
+  <main class="container">
+    <section class="search-panel glass-card" id="search-panel">
+      <h2>🔍 研究查詢</h2>
+      <p class="section-desc">用自然語言描述你要搜尋的論文，AI 會自動理解你的需求。</p>
+
+      <div class="input-group">
+        <label for="query-input">查詢內容</label>
+        <textarea id="query-input" rows="3"
+          placeholder="例如：幫我找關於量子加密50篇，QS排名前100的學校"></textarea>
+      </div>
+
+      <div class="input-row">
+        <div class="input-group flex-1">
+          <label for="model-select">選擇模型 (OLLAMA)</label>
+          <select id="model-select" class="form-select">
+            <option value="">載入中...</option>
+          </select>
+        </div>
+        <div class="input-group flex-1">
+          <label for="source-select">論文來源</label>
+          <select id="source-select" class="form-select">
+            <option value="multi">多來源聚合搜尋 (Semantic Scholar, ArXiv, OpenAlex, Crossref)</option>
+            <option value="arxiv">僅 arXiv (CS/物理/數學、100%有PDF)</option>
+          </select>
+        </div>
+        <div class="input-group flex-1">
+          <label for="download-dir">PDF 下載路徑</label>
+          <input type="text" id="download-dir" placeholder="預設：./paper_downloads/">
+        </div>
+      </div>
+
+      <div class="input-group checkbox-group" style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox" id="use-scihub" style="width: auto; cursor: pointer;">
+        <label for="use-scihub" style="margin: 0; cursor: pointer;">啟用 Sci-Hub 備用下載機制 (當正常下載失敗時使用，請注意網路穩定性)</label>
+      </div>
+
+      <div class="input-group">
+        <label for="report-file">上傳我的報告 (支援 RAG 比對, 可選取多個檔案: .txt / .md / .pdf)</label>
+        <input type="file" id="report-file" accept=".txt,.md,.pdf" multiple style="color: var(--text-secondary); background: var(--bg-input); border: 1px dashed var(--border-color); padding: 10px; border-radius: 8px; width: 100%;">
+      </div>
+
+      <button class="btn-primary" id="btn-search" onclick="startSearch()">
+        <span class="btn-icon">🚀</span>
+        <span>開始搜尋</span>
+      </button>
+    </section>
+
+    <!-- Progress Section -->
+    <section class="progress-panel glass-card" id="progress-panel" style="display:none;">
+      <div class="progress-header">
+        <h2>⚙️ 執行進度</h2>
+        <div class="stage-indicator" id="stage-indicator">
+          <div class="stage" id="stage-parsing" data-label="解析查詢">🧠</div>
+          <div class="stage-line"></div>
+          <div class="stage" id="stage-searching" data-label="搜尋論文">🔍</div>
+          <div class="stage-line"></div>
+          <div class="stage" id="stage-downloading" data-label="下載PDF">📥</div>
+          <div class="stage-line"></div>
+          <div class="stage" id="stage-analyzing" data-label="AI分析">🤖</div>
+          <div class="stage-line"></div>
+          <div class="stage" id="stage-reporting" data-label="產出報告">📝</div>
+        </div>
+      </div>
+
+      <div class="stats-row" id="stats-row">
+        <div class="stat-card">
+          <span class="stat-num" id="stat-papers">0</span>
+          <span class="stat-label">找到論文</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="stat-downloaded">—</span>
+          <span class="stat-label">已下載</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="stat-status">等待中</span>
+          <span class="stat-label">狀態</span>
+        </div>
+      </div>
+
+      <div class="log-container" id="log-container">
+        <div class="log-header">
+          <span>📋 執行日誌</span>
+          <button class="btn-small" onclick="clearLogs()">清除</button>
+        </div>
+        <div class="log-entries" id="log-entries"></div>
+      </div>
+
+      <!-- Report Button -->
+      <div class="report-actions" id="report-actions" style="display:none;">
+        <button class="btn-primary btn-report" id="btn-report" onclick="openReport()">
+          <span class="btn-icon">📊</span>
+          <span>查看分析報告</span>
+        </button>
+        <button class="btn-secondary" onclick="downloadJSON()">
+          <span>📁 下載 JSON 資料</span>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>Paper Research Agent v1.0 — Powered by OLLAMA + Semantic Scholar</p>
+  </footer>
+
+  <script>
+    let currentTaskId = null;
+    let eventSource = null;
+
+    function startSearch() {
+      const query = document.getElementById('query-input').value.trim();
+      const downloadDir = document.getElementById('download-dir').value.trim();
+      const selectedModel = document.getElementById('model-select').value;
+      const source = document.getElementById('source-select').value;
+      const useScihub = document.getElementById('use-scihub').checked;
+      const fileInput = document.getElementById('report-file');
+
+      if (!query) {
+        shakeElement('query-input');
+        return;
+      }
+
+      // Disable button
+      const btn = document.getElementById('btn-search');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="btn-icon spin">⏳</span><span>處理中...</span>';
+
+      // Show progress panel
+      document.getElementById('progress-panel').style.display = 'block';
+      document.getElementById('report-actions').style.display = 'none';
+      document.getElementById('log-entries').innerHTML = '';
+      resetStages();
+
+      const formData = new FormData();
+      formData.append('query', query);
+      formData.append('download_dir', downloadDir);
+      formData.append('model', selectedModel);
+      formData.append('source', source);
+      formData.append('use_scihub', useScihub);
+      if (fileInput.files.length > 0) {
+        for (let i = 0; i < fileInput.files.length; i++) {
+          formData.append('report_files', fileInput.files[i]);
+        }
+      }
+
+      // Start search
+      fetch('/api/search', {
+        method: 'POST',
+        body: formData,
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) {
+            addLog('❌ ' + data.error);
+            resetButton();
+            return;
+          }
+          currentTaskId = data.task_id;
+          connectSSE(data.task_id);
+        })
+        .catch(err => {
+          addLog('❌ Connection error: ' + err.message);
+          resetButton();
+        });
+
+      // Scroll to progress
+      setTimeout(() => {
+        document.getElementById('progress-panel').scrollIntoView({
+          behavior: 'smooth', block: 'start'
+        });
+      }, 300);
+    }
+
+    function connectSSE(taskId) {
+      if (eventSource) eventSource.close();
+
+      eventSource = new EventSource('/api/stream/' + taskId);
+
+      eventSource.addEventListener('log', (e) => {
+        const data = JSON.parse(e.data);
+        addLog(data.msg);
+      });
+
+      eventSource.addEventListener('status', (e) => {
+        const data = JSON.parse(e.data);
+        updateStats(data);
+        updateStage(data.stage);
+      });
+
+      eventSource.addEventListener('done', (e) => {
+        const data = JSON.parse(e.data);
+        eventSource.close();
+        eventSource = null;
+
+        updateStats({
+          total_papers: data.total_papers,
+          status: data.status,
+          report_ready: !!data.report_path,
+        });
+
+        if (data.report_path) {
+          document.getElementById('report-actions').style.display = 'flex';
+        }
+
+        if (data.error) {
+          addLog('❌ Error: ' + data.error);
+        }
+
+        resetButton();
+        completeAllStages();
+      });
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        eventSource = null;
+        addLog('⚠️ Connection lost.');
+        resetButton();
+      };
+    }
+
+    function addLog(msg) {
+      const container = document.getElementById('log-entries');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry fade-in';
+      const time = new Date().toLocaleTimeString('zh-TW');
+      entry.innerHTML = `<span class="log-time">${time}</span><span class="log-msg">${escapeHtml(msg)}</span>`;
+      container.appendChild(entry);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function clearLogs() {
+      document.getElementById('log-entries').innerHTML = '';
+    }
+
+    function updateStats(data) {
+      if (data.total_papers !== undefined) {
+        document.getElementById('stat-papers').textContent = data.total_papers;
+      }
+      if (data.downloaded !== undefined) {
+        document.getElementById('stat-downloaded').textContent = data.downloaded;
+      }
+      const statusEl = document.getElementById('stat-status');
+      const statusMap = {
+        running: '執行中',
+        completed: '完成 ✅',
+        error: '錯誤 ❌',
+        pending: '等待中',
+      };
+      statusEl.textContent = statusMap[data.status] || data.status;
+    }
+
+    function updateStage(stage) {
+      const stages = ['parsing', 'searching', 'downloading', 'analyzing', 'reporting'];
+      const idx = stages.indexOf(stage);
+      stages.forEach((s, i) => {
+        const el = document.getElementById('stage-' + s);
+        if (!el) return;
+        el.classList.remove('active', 'done');
+        if (i < idx) el.classList.add('done');
+        else if (i === idx) el.classList.add('active');
+      });
+    }
+
+    function resetStages() {
+      ['parsing', 'searching', 'downloading', 'analyzing', 'reporting'].forEach(s => {
+        const el = document.getElementById('stage-' + s);
+        if (el) el.classList.remove('active', 'done');
+      });
+    }
+
+    function completeAllStages() {
+      ['parsing', 'searching', 'downloading', 'analyzing', 'reporting'].forEach(s => {
+        const el = document.getElementById('stage-' + s);
+        if (el) { el.classList.remove('active'); el.classList.add('done'); }
+      });
+    }
+
+    function resetButton() {
+      const btn = document.getElementById('btn-search');
+      btn.disabled = false;
+      btn.innerHTML = '<span class="btn-icon">🚀</span><span>開始搜尋</span>';
+    }
+
+    function openReport() {
+      if (currentTaskId) {
+        window.open('/api/report/' + currentTaskId, '_blank');
+      }
+    }
+
+    function downloadJSON() {
+      if (currentTaskId) {
+        window.open('/api/report-json/' + currentTaskId, '_blank');
+      }
+    }
+
+    function shakeElement(id) {
+      const el = document.getElementById(id);
+      el.classList.add('shake');
+      setTimeout(() => el.classList.remove('shake'), 600);
+    }
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    // Enter key to search
+    document.getElementById('query-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        startSearch();
+      }
+    });
+
+    // Fetch models on load
+    window.addEventListener('DOMContentLoaded', () => {
+      fetch('/api/models')
+        .then(r => r.json())
+        .then(data => {
+          const select = document.getElementById('model-select');
+          select.innerHTML = '';
+          if (data.models && data.models.length > 0) {
+            data.models.forEach(model => {
+              const opt = document.createElement('option');
+              opt.value = model;
+              opt.textContent = model;
+              select.appendChild(opt);
+            });
+            // Try to select gemma4 if it exists
+            const gemmaOpt = Array.from(select.options).find(o => o.value.includes('gemma4'));
+            if (gemmaOpt) gemmaOpt.selected = true;
+          } else {
+            select.innerHTML = '<option value="">無可用模型</option>';
+          }
+        })
+        .catch(err => {
+          console.error('Failed to load models', err);
+          document.getElementById('model-select').innerHTML = '<option value="">載入失敗</option>';
+        });
+    });
+  </script>
+</body>
+</html>
